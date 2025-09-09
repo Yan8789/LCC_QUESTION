@@ -4,13 +4,13 @@ let glossaryTerms = [];
 let firebaseEnabled = false;
 let questionsRef = null;
 let glossaryRef = null;
+let currentEditingQuestion = null;
+let currentEditingGlossary = null;
 
 // 初始化應用程式
 window.initializeApp = function() {
-    console.log('初始化應用程式...');
     setupNavigation();
     
-    // 檢查 Firebase 是否可用
     if (typeof window.firebaseDb !== 'undefined') {
         try {
             questionsRef = window.firebaseRef(window.firebaseDb, 'questions');
@@ -18,87 +18,18 @@ window.initializeApp = function() {
             setupFirebaseListener();
             setupGlossaryListener();
             firebaseEnabled = true;
-            updateConnectionStatus('✅ 已連線到 Firebase 資料庫', true);
-            console.log('Firebase 初始化成功');
+            updateConnectionStatus('✅已連線到資料庫', true);
         } catch (error) {
-            console.error('Firebase 初始化失敗:', error);
-            updateConnectionStatus('❌ Firebase 連線失敗：' + error.message, false);
             fallbackToLocalStorage();
         }
     } else {
-        console.log('Firebase 模組未載入，使用本地模式');
-        updateConnectionStatus('⚠️ 使用本地儲存模式（Firebase 未設定）', false);
         fallbackToLocalStorage();
     }
 };
 
-// 設定 Firebase 監聽器
-function setupFirebaseListener() {
-    window.firebaseOnValue(questionsRef, (snapshot) => {
-        const data = snapshot.val();
-        console.log('Firebase 資料更新:', data);
-        
-        if (data && typeof data === 'object') {
-            questions = Object.keys(data).map(key => ({
-                firebaseKey: key,
-                ...data[key]
-            }));
-            console.log('載入的問題數量:', questions.length);
-        } else {
-            questions = [];
-            console.log('資料庫為空，初始化空陣列');
-        }
-        
-        updateAllViews();
-    }, (error) => {
-        console.error('Firebase 讀取錯誤:', error);
-        updateConnectionStatus('連線錯誤，回退到本地模式', false);
-        fallbackToLocalStorage();
-    });
-}
-
-// 設定專有名詞 Firebase 監聽器
-function setupGlossaryListener() {
-    window.firebaseOnValue(glossaryRef, (snapshot) => {
-        const data = snapshot.val();
-        console.log('專有名詞 Firebase 資料更新:', data);
-        
-        if (data && typeof data === 'object') {
-            glossaryTerms = Object.keys(data).map(key => ({
-                firebaseKey: key,
-                ...data[key]
-            }));
-            console.log('載入的專有名詞數量:', glossaryTerms.length);
-        } else {
-            glossaryTerms = [];
-            console.log('專有名詞資料庫為空，初始化空陣列');
-        }
-        
-        updateGlossaryView();
-    }, (error) => {
-        console.error('專有名詞 Firebase 讀取錯誤:', error);
-    });
-}
-
-// 回退到本地儲存
-function fallbackToLocalStorage() {
-    updateConnectionStatus('使用本地儲存模式（其他人看不到您的問題）', false);
-    loadQuestionsFromLocal();
-    loadGlossaryFromLocal();
-    updateAllViews();
-}
-
-// 更新連線狀態
-function updateConnectionStatus(message, isOnline) {
-    const statusEl = document.getElementById('connectionStatus');
-    statusEl.textContent = message;
-    statusEl.className = isOnline ? 'connection-status' : 'connection-status offline';
-}
-
-// 設定導航功能
+// 設定導航
 function setupNavigation() {
-    const navButtons = document.querySelectorAll('.nav-btn');
-    navButtons.forEach(btn => {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const sectionName = this.getAttribute('data-section');
             showSection(sectionName, this);
@@ -106,94 +37,107 @@ function setupNavigation() {
     });
 }
 
-// 載入本地問題資料
+// Firebase 監聽器
+function setupFirebaseListener() {
+    window.firebaseOnValue(questionsRef, (snapshot) => {
+        const data = snapshot.val();
+        questions = data ? Object.keys(data).map(key => ({ firebaseKey: key, ...data[key] })) : [];
+        updateAllViews();
+    });
+}
+
+function setupGlossaryListener() {
+    window.firebaseOnValue(glossaryRef, (snapshot) => {
+        const data = snapshot.val();
+        glossaryTerms = data ? Object.keys(data).map(key => ({ firebaseKey: key, ...data[key] })) : [];
+        updateGlossaryView();
+    });
+}
+
+// 回退到本地儲存
+function fallbackToLocalStorage() {
+    updateConnectionStatus('使用本地儲存模式', false);
+    loadQuestionsFromLocal();
+    loadGlossaryFromLocal();
+    updateAllViews();
+}
+
+// 本地儲存
 function loadQuestionsFromLocal() {
     const saved = localStorage.getItem('questions');
-    if (saved) {
-        questions = JSON.parse(saved);
-    }
+    questions = saved ? JSON.parse(saved) : [];
 }
 
-// 載入本地專有名詞資料
 function loadGlossaryFromLocal() {
     const saved = localStorage.getItem('glossaryTerms');
-    if (saved) {
-        glossaryTerms = JSON.parse(saved);
-    }
+    glossaryTerms = saved ? JSON.parse(saved) : [];
 }
 
-// 儲存到本地
 function saveQuestionsToLocal() {
     localStorage.setItem('questions', JSON.stringify(questions));
 }
 
-// 儲存專有名詞到本地
 function saveGlossaryToLocal() {
     localStorage.setItem('glossaryTerms', JSON.stringify(glossaryTerms));
 }
 
-// 顯示指定區塊
+// 顯示區塊
 function showSection(sectionName, clickedButton) {
-    document.querySelectorAll('.section').forEach(section => {
-        section.classList.remove('active');
-    });
+    document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
     document.getElementById(sectionName).classList.add('active');
     clickedButton.classList.add('active');
-
-    if (sectionName === 'manage') {
-        updateManageView();
-    } else if (sectionName === 'answer') {
-        updateAnswerView();
-    } else if (sectionName === 'glossary') {
-        updateGlossaryView();
-    } else if (sectionName === 'export') {
-        updateExportView();
-    }
+    
+    if (sectionName === 'manage') updateManageView();
+    else if (sectionName === 'answer') updateAnswerView();
+    else if (sectionName === 'glossary') updateGlossaryView();
+    else if (sectionName === 'export') updateExportView();
 }
 
-// 切換新增表單顯示
+// 表單控制
 function toggleAddForm() {
     const form = document.getElementById('addQuestionForm');
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
-    
-    if (form.style.display === 'block') {
-        document.getElementById('questionInput').focus();
-    }
 }
 
-// 切換新增專有名詞表單
 function toggleGlossaryForm() {
     const form = document.getElementById('addGlossaryForm');
     form.style.display = form.style.display === 'none' ? 'block' : 'none';
-    
-    if (form.style.display === 'block') {
-        document.getElementById('termInput').focus();
-    }
 }
 
-// 取消新增
 function cancelAdd() {
     document.getElementById('addQuestionForm').style.display = 'none';
-    document.getElementById('questionInput').value = '';
-    document.getElementById('answerInput').value = '';
-    document.getElementById('authorInput').value = '';
+    clearForm(['questionInput', 'answerInput', 'authorInput']);
 }
 
-// 取消新增專有名詞
 function cancelGlossaryAdd() {
     document.getElementById('addGlossaryForm').style.display = 'none';
-    document.getElementById('termInput').value = '';
-    document.getElementById('definitionInput').value = '';
-    document.getElementById('categoryInput').value = '';
-    document.getElementById('glossaryAuthorInput').value = '';
+    clearForm(['termInput', 'definitionInput', 'categoryInput', 'glossaryAuthorInput']);
 }
 
-// 新增問題
+function cancelEdit() {
+    document.getElementById('editQuestionForm').style.display = 'none';
+    clearForm(['editQuestionInput', 'editAnswerInput', 'editAuthorInput']);
+    currentEditingQuestion = null;
+    document.querySelectorAll('.question-text.editing').forEach(el => el.classList.remove('editing'));
+}
+
+function cancelGlossaryEdit() {
+    document.getElementById('editGlossaryForm').style.display = 'none';
+    clearForm(['editTermInput', 'editDefinitionInput', 'editCategoryInput', 'editGlossaryAuthorInput']);
+    currentEditingGlossary = null;
+    document.querySelectorAll('.question-text.editing').forEach(el => el.classList.remove('editing'));
+}
+
+function clearForm(fieldIds) {
+    fieldIds.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+    });
+}
+
+// 新增功能
 function addQuestion() {
     const questionText = document.getElementById('questionInput').value.trim();
     const answerText = document.getElementById('answerInput').value.trim();
@@ -204,10 +148,6 @@ function addQuestion() {
         return;
     }
 
-    const addBtn = document.getElementById('addBtn');
-    addBtn.disabled = true;
-    addBtn.textContent = '新增中...';
-
     const newQuestion = {
         id: Date.now(),
         question: questionText,
@@ -217,30 +157,17 @@ function addQuestion() {
         timestamp: Date.now()
     };
 
+    questions.push(newQuestion);
+    saveQuestionsToLocal();
+    updateAllViews();
+    cancelAdd();
+
+    // 背景同步到 Firebase
     if (firebaseEnabled && questionsRef) {
-        // 儲存到 Firebase
-        window.firebasePush(questionsRef, newQuestion).then(() => {
-            cancelAdd();
-            addBtn.disabled = false;
-            addBtn.textContent = '新增';
-        }).catch((error) => {
-            console.error('新增失敗:', error);
-            alert('新增失敗，請稍後再試');
-            addBtn.disabled = false;
-            addBtn.textContent = '新增';
-        });
-    } else {
-        // 儲存到本地
-        questions.push(newQuestion);
-        saveQuestionsToLocal();
-        updateAllViews();
-        cancelAdd();
-        addBtn.disabled = false;
-        addBtn.textContent = '新增';
+        window.firebasePush(questionsRef, newQuestion).catch(console.error);
     }
 }
 
-// 新增專有名詞
 function addGlossaryTerm() {
     const termText = document.getElementById('termInput').value.trim();
     const definitionText = document.getElementById('definitionInput').value.trim();
@@ -252,10 +179,6 @@ function addGlossaryTerm() {
         return;
     }
 
-    const addBtn = document.getElementById('addGlossaryBtn');
-    addBtn.disabled = true;
-    addBtn.textContent = '新增中...';
-
     const newTerm = {
         id: Date.now(),
         term: termText,
@@ -266,93 +189,133 @@ function addGlossaryTerm() {
         timestamp: Date.now()
     };
 
+    glossaryTerms.push(newTerm);
+    saveGlossaryToLocal();
+    updateGlossaryView();
+    cancelGlossaryAdd();
+
+    // 背景同步到 Firebase
     if (firebaseEnabled && glossaryRef) {
-        // 儲存到 Firebase
-        window.firebasePush(glossaryRef, newTerm).then(() => {
-            cancelGlossaryAdd();
-            addBtn.disabled = false;
-            addBtn.textContent = '新增';
-        }).catch((error) => {
-            console.error('新增專有名詞失敗:', error);
-            alert('新增失敗，請稍後再試');
-            addBtn.disabled = false;
-            addBtn.textContent = '新增';
-        });
-    } else {
-        // 儲存到本地
-        glossaryTerms.push(newTerm);
-        saveGlossaryToLocal();
-        updateGlossaryView();
-        cancelGlossaryAdd();
-        addBtn.disabled = false;
-        addBtn.textContent = '新增';
+        window.firebasePush(glossaryRef, newTerm).catch(console.error);
     }
 }
 
-// 刪除問題
-function deleteQuestion(firebaseKey, localId) {
-    if (!confirm('確定要刪除這個問題嗎？')) {
+// 編輯功能
+function editQuestion(firebaseKey, localId) {
+    cancelEdit();
+    
+    const questionToEdit = firebaseKey 
+        ? questions.find(q => q.firebaseKey === firebaseKey)
+        : questions.find(q => q.id == localId);
+    
+    if (!questionToEdit) return;
+    
+    currentEditingQuestion = { firebaseKey, localId };
+    
+    document.getElementById('editQuestionInput').value = questionToEdit.question;
+    document.getElementById('editAnswerInput').value = questionToEdit.answer;
+    document.getElementById('editAuthorInput').value = questionToEdit.author || '';
+    
+    document.getElementById('addQuestionForm').style.display = 'none';
+    document.getElementById('editQuestionForm').style.display = 'block';
+}
+
+function editGlossaryTerm(firebaseKey, localId) {
+    cancelGlossaryEdit();
+    
+    const termToEdit = firebaseKey 
+        ? glossaryTerms.find(t => t.firebaseKey === firebaseKey)
+        : glossaryTerms.find(t => t.id == localId);
+    
+    if (!termToEdit) return;
+    
+    currentEditingGlossary = { firebaseKey, localId };
+    
+    document.getElementById('editTermInput').value = termToEdit.term;
+    document.getElementById('editDefinitionInput').value = termToEdit.definition;
+    document.getElementById('editCategoryInput').value = termToEdit.category || '';
+    document.getElementById('editGlossaryAuthorInput').value = termToEdit.author || '';
+    
+    document.getElementById('addGlossaryForm').style.display = 'none';
+    document.getElementById('editGlossaryForm').style.display = 'block';
+}
+
+function saveQuestionEdit() {
+    if (!currentEditingQuestion) return;
+    
+    const questionText = document.getElementById('editQuestionInput').value.trim();
+    const answerText = document.getElementById('editAnswerInput').value.trim();
+    const authorText = document.getElementById('editAuthorInput').value.trim() || '匿名用戶';
+
+    if (!questionText || !answerText) {
+        alert('請填寫完整的問題和答案！');
         return;
     }
 
-    if (firebaseEnabled && questionsRef && firebaseKey) {
-        // 從 Firebase 刪除
-        const questionRef = window.firebaseRef(window.firebaseDb, `questions/${firebaseKey}`);
-        window.firebaseRemove(questionRef).catch((error) => {
-            console.error('刪除失敗:', error);
-            alert('刪除失敗，請稍後再試');
-        });
-    } else {
-        // 從本地刪除
-        const numId = Number(localId);
-        questions = questions.filter(q => Number(q.id) !== numId);
+    const updatedQuestion = {
+        question: questionText,
+        answer: answerText,
+        author: authorText,
+        updatedAt: new Date().toLocaleString()
+    };
+
+    const questionIndex = questions.findIndex(q => q.id == currentEditingQuestion.localId);
+    if (questionIndex !== -1) {
+        questions[questionIndex] = { ...questions[questionIndex], ...updatedQuestion };
         saveQuestionsToLocal();
         updateAllViews();
     }
+    cancelEdit();
 }
 
-// 刪除專有名詞
-function deleteGlossaryTerm(firebaseKey, localId) {
-    if (!confirm('確定要刪除這個專有名詞嗎？')) {
+function saveGlossaryEdit() {
+    if (!currentEditingGlossary) return;
+    
+    const termText = document.getElementById('editTermInput').value.trim();
+    const definitionText = document.getElementById('editDefinitionInput').value.trim();
+    const categoryText = document.getElementById('editCategoryInput').value.trim() || '一般';
+    const authorText = document.getElementById('editGlossaryAuthorInput').value.trim() || '匿名用戶';
+
+    if (!termText || !definitionText) {
+        alert('請填寫完整的名詞和解釋！');
         return;
     }
 
-    if (firebaseEnabled && glossaryRef && firebaseKey) {
-        // 從 Firebase 刪除
-        const termRef = window.firebaseRef(window.firebaseDb, `glossary/${firebaseKey}`);
-        window.firebaseRemove(termRef).catch((error) => {
-            console.error('刪除專有名詞失敗:', error);
-            alert('刪除失敗，請稍後再試');
-        });
-    } else {
-        // 從本地刪除
-        const numId = Number(localId);
-        glossaryTerms = glossaryTerms.filter(t => Number(t.id) !== numId);
+    const updatedTerm = {
+        term: termText,
+        definition: definitionText,
+        category: categoryText,
+        author: authorText,
+        updatedAt: new Date().toLocaleString()
+    };
+
+    const termIndex = glossaryTerms.findIndex(t => t.id == currentEditingGlossary.localId);
+    if (termIndex !== -1) {
+        glossaryTerms[termIndex] = { ...glossaryTerms[termIndex], ...updatedTerm };
         saveGlossaryToLocal();
         updateGlossaryView();
     }
+    cancelGlossaryEdit();
 }
 
-// 搜尋專有名詞
-function filterGlossary() {
-    const searchTerm = document.getElementById('glossarySearch').value.toLowerCase();
-    const container = document.getElementById('glossaryList');
-    const items = container.querySelectorAll('.question-item');
+// 刪除功能
+function deleteQuestion(firebaseKey, localId) {
+    if (!confirm('確定要刪除這個問題嗎？')) return;
     
-    items.forEach(item => {
-        const termText = item.querySelector('.question-text').textContent.toLowerCase();
-        const definitionText = item.querySelector('.answer-text') ? 
-            item.querySelector('.answer-text').textContent.toLowerCase() : '';
-        
-        if (termText.includes(searchTerm) || definitionText.includes(searchTerm)) {
-            item.style.display = 'block';
-        } else {
-            item.style.display = 'none';
-        }
-    });
+    questions = questions.filter(q => Number(q.id) !== Number(localId));
+    saveQuestionsToLocal();
+    updateAllViews();
 }
 
-// 顯示/隱藏答案
+function deleteGlossaryTerm(firebaseKey, localId) {
+    if (!confirm('確定要刪除這個專有名詞嗎？')) return;
+    
+    glossaryTerms = glossaryTerms.filter(t => Number(t.id) !== Number(localId));
+    saveGlossaryToLocal();
+    updateGlossaryView();
+}
+
+// 切換顯示
 function toggleAnswer(id) {
     const answerDiv = document.getElementById(`answer-${id}`);
     const btn = document.getElementById(`btn-${id}`);
@@ -366,7 +329,6 @@ function toggleAnswer(id) {
     }
 }
 
-// 顯示/隱藏專有名詞定義
 function toggleDefinition(id) {
     const definitionDiv = document.getElementById(`definition-${id}`);
     const btn = document.getElementById(`defBtn-${id}`);
@@ -380,69 +342,69 @@ function toggleDefinition(id) {
     }
 }
 
-// 更新管理視圖
+// 搜尋功能
+function filterGlossary() {
+    const searchTerm = document.getElementById('glossarySearch').value.toLowerCase();
+    const items = document.querySelectorAll('#glossaryList .question-item');
+    
+    items.forEach(item => {
+        const termText = item.querySelector('.question-text').textContent.toLowerCase();
+        const definitionText = item.querySelector('.answer-text')?.textContent.toLowerCase() || '';
+        item.style.display = (termText.includes(searchTerm) || definitionText.includes(searchTerm)) ? 'block' : 'none';
+    });
+}
+
+// 視圖更新
 function updateManageView() {
     const container = document.getElementById('questionsList');
     
     if (questions.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div style="font-size: 48px; margin-bottom: 20px;">📝</div>
-                <p>尚未新增任何問題</p>
-                <p style="font-size: 14px; margin-top: 10px;">點擊上方的「+ 新增問題」開始建立您的問題庫</p>
-            </div>
-        `;
+        container.innerHTML = '<div class="empty-state"><div style="font-size: 48px; margin-bottom: 20px;">📝</div><p>尚未新增任何問題</p></div>';
         return;
     }
 
-    // 按時間排序，最新的在前面
     const sortedQuestions = [...questions].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-    let html = '';
-    sortedQuestions.forEach(q => {
-        const isNew = q.timestamp && (Date.now() - q.timestamp < 300000); // 5分鐘內為新問題
-        html += `
+    
+    container.innerHTML = sortedQuestions.map(q => {
+        const isNew = q.timestamp && (Date.now() - q.timestamp < 300000);
+        const updateInfo = q.updatedAt ? `<br><small style="color: #28a745;">已更新：${q.updatedAt}</small>` : '';
+        
+        return `
             <div class="question-item ${isNew ? 'new' : ''}">
                 <div class="question-header">
-                    <div class="question-text">${escapeHtml(q.question)}</div>
-                    <button class="btn-danger btn" onclick="deleteQuestion('${q.firebaseKey || ''}', '${q.id}')">刪除</button>
+                    <div class="question-text" onclick="editQuestion('${q.firebaseKey || ''}', '${q.id}')" title="點擊編輯">
+                        ${escapeHtml(q.question)}
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn" onclick="editQuestion('${q.firebaseKey || ''}', '${q.id}')" style="background: #17a2b8; padding: 8px 16px; font-size: 14px;">編輯</button>
+                        <button class="btn-danger btn" onclick="deleteQuestion('${q.firebaseKey || ''}', '${q.id}')">刪除</button>
+                    </div>
                 </div>
                 <div style="color: #6c757d; font-size: 14px; margin-top: 10px;">
-                    提問者：${escapeHtml(q.author || '匿名用戶')} | 建立時間：${q.createdAt}
+                    發布者：${escapeHtml(q.author || '匿名用戶')} | 建立時間：${q.createdAt}${updateInfo}
                 </div>
             </div>
         `;
-    });
-    
-    container.innerHTML = html;
+    }).join('');
 }
 
-// 更新回答視圖
 function updateAnswerView() {
     const container = document.getElementById('answerQuestionsList');
     
     if (questions.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div style="font-size: 48px; margin-bottom: 20px;">❓</div>
-                <p>尚未有任何問題</p>
-                <p style="font-size: 14px; margin-top: 10px;">請先到「管理問題」區塊新增問題</p>
-            </div>
-        `;
+        container.innerHTML = '<div class="empty-state"><div style="font-size: 48px; margin-bottom: 20px;">❓</div><p>尚未有任何問題</p></div>';
         return;
     }
 
-    // 按時間排序
     const sortedQuestions = [...questions].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-    let html = '';
-    sortedQuestions.forEach(q => {
+    
+    container.innerHTML = sortedQuestions.map(q => {
         const uniqueId = q.firebaseKey || q.id;
-        html += `
+        return `
             <div class="question-item">
                 <div class="question-text">${escapeHtml(q.question)}</div>
                 <div style="color: #6c757d; font-size: 14px; margin: 10px 0;">
-                    提問者：${escapeHtml(q.author || '匿名用戶')}
+                    發布者：${escapeHtml(q.author || '匿名用戶')}
                 </div>
                 <button class="show-answer-btn" id="btn-${uniqueId}" onclick="toggleAnswer('${uniqueId}')">顯示答案</button>
                 <div class="answer-text" id="answer-${uniqueId}">
@@ -451,59 +413,48 @@ function updateAnswerView() {
                 </div>
             </div>
         `;
-    });
-    
-    container.innerHTML = html;
+    }).join('');
 }
 
-// 更新專有名詞視圖
 function updateGlossaryView() {
     const container = document.getElementById('glossaryList');
     
     if (glossaryTerms.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div style="font-size: 48px; margin-bottom: 20px;">📖</div>
-                <p>尚未新增任何專有名詞</p>
-                <p style="font-size: 14px; margin-top: 10px;">點擊上方的「+ 新增名詞」開始建立您的專有名詞庫</p>
-            </div>
-        `;
+        container.innerHTML = '<div class="empty-state"><div style="font-size: 48px; margin-bottom: 20px;">📖</div><p>尚未新增任何專有名詞</p></div>';
         return;
     }
 
-    // 按字母排序
-    const sortedTerms = [...glossaryTerms].sort((a, b) => 
-        a.term.localeCompare(b.term, 'zh-TW', { numeric: true })
-    );
-
-    let html = '';
-    
-    // 按分類分組
+    const sortedTerms = [...glossaryTerms].sort((a, b) => a.term.localeCompare(b.term, 'zh-TW'));
     const groupedTerms = {};
+    
     sortedTerms.forEach(term => {
         const category = term.category || '一般';
-        if (!groupedTerms[category]) {
-            groupedTerms[category] = [];
-        }
+        if (!groupedTerms[category]) groupedTerms[category] = [];
         groupedTerms[category].push(term);
     });
 
-    // 依分類顯示
+    let html = '';
     Object.keys(groupedTerms).sort().forEach(category => {
         html += `<h3 style="margin: 30px 0 20px 0; color: #667eea; border-bottom: 2px solid #e9ecef; padding-bottom: 10px;">${escapeHtml(category)}</h3>`;
         
         groupedTerms[category].forEach(term => {
             const uniqueId = term.firebaseKey || term.id;
-            const isNew = term.timestamp && (Date.now() - term.timestamp < 300000); // 5分鐘內為新名詞
+            const isNew = term.timestamp && (Date.now() - term.timestamp < 300000);
+            const updateInfo = term.updatedAt ? `<br><small style="color: #28a745;">已更新：${term.updatedAt}</small>` : '';
             
             html += `
                 <div class="question-item ${isNew ? 'new' : ''}">
                     <div class="question-header">
-                        <div class="question-text" style="color: #667eea; font-weight: bold;">${escapeHtml(term.term)}</div>
-                        <button class="btn-danger btn" onclick="deleteGlossaryTerm('${term.firebaseKey || ''}', '${term.id}')">刪除</button>
+                        <div class="question-text" onclick="editGlossaryTerm('${term.firebaseKey || ''}', '${term.id}')" title="點擊編輯" style="color: #667eea; font-weight: bold;">
+                            ${escapeHtml(term.term)}
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn" onclick="editGlossaryTerm('${term.firebaseKey || ''}', '${term.id}')" style="background: #17a2b8; padding: 8px 16px; font-size: 14px;">編輯</button>
+                            <button class="btn-danger btn" onclick="deleteGlossaryTerm('${term.firebaseKey || ''}', '${term.id}')">刪除</button>
+                        </div>
                     </div>
                     <div style="color: #6c757d; font-size: 14px; margin: 10px 0;">
-                        建立者：${escapeHtml(term.author || '匿名用戶')}
+                        建立者：${escapeHtml(term.author || '匿名用戶')} | 建立時間：${term.createdAt}${updateInfo}
                     </div>
                     <button class="show-answer-btn" id="defBtn-${uniqueId}" onclick="toggleDefinition('${uniqueId}')">顯示定義</button>
                     <div class="answer-text" id="definition-${uniqueId}">
@@ -518,82 +469,47 @@ function updateGlossaryView() {
     container.innerHTML = html;
 }
 
-// 更新輸出視圖
 function updateExportView() {
     const container = document.getElementById('pdfPreview');
     
     if (questions.length === 0 && glossaryTerms.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
-                <p>尚未有任何內容可以輸出</p>
-                <p style="font-size: 14px; margin-top: 10px;">請先新增問題或專有名詞後再進行 PDF 輸出</p>
-            </div>
-        `;
+        container.innerHTML = '<div class="empty-state"><div style="font-size: 48px; margin-bottom: 20px;">📄</div><p>尚未有任何內容可以輸出</p></div>';
         return;
     }
 
-    let html = '<h3 style="margin-bottom: 20px;">預覽內容：</h3>';
+    let html = '<h3>預覽內容：</h3>';
     
-    // 顯示問題預覽
     if (questions.length > 0) {
-        html += '<h4 style="color: #667eea; margin: 20px 0 15px 0;">問題與答案</h4>';
-        const sortedQuestions = [...questions].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        
-        sortedQuestions.forEach((q, index) => {
+        html += `<h4 style="color: #667eea; margin: 20px 0 15px 0;">問題與答案</h4>`;
+        questions.forEach((q, index) => {
             html += `
                 <div class="question-item">
                     <div style="font-weight: bold; margin-bottom: 10px;">問題 ${index + 1}：${escapeHtml(q.question)}</div>
-                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px;">
                         <strong>答案：</strong>${escapeHtml(q.answer)}
-                    </div>
-                    <div style="color: #6c757d; font-size: 12px;">
-                        提問者：${escapeHtml(q.author || '匿名用戶')} | ${q.createdAt}
                     </div>
                 </div>
             `;
         });
     }
 
-    // 顯示專有名詞預覽
     if (glossaryTerms.length > 0) {
-        html += '<h4 style="color: #667eea; margin: 30px 0 15px 0;">專有名詞</h4>';
-        const sortedTerms = [...glossaryTerms].sort((a, b) => 
-            a.term.localeCompare(b.term, 'zh-TW', { numeric: true })
-        );
-        
-        const groupedTerms = {};
-        sortedTerms.forEach(term => {
-            const category = term.category || '一般';
-            if (!groupedTerms[category]) {
-                groupedTerms[category] = [];
-            }
-            groupedTerms[category].push(term);
-        });
-
-        Object.keys(groupedTerms).sort().forEach(category => {
-            html += `<h5 style="color: #495057; margin: 20px 0 10px 0;">${escapeHtml(category)}</h5>`;
-            
-            groupedTerms[category].forEach((term, index) => {
-                html += `
-                    <div class="question-item">
-                        <div style="font-weight: bold; margin-bottom: 10px; color: #667eea;">${escapeHtml(term.term)}</div>
-                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                            <strong>定義：</strong>${escapeHtml(term.definition)}
-                        </div>
-                        <div style="color: #6c757d; font-size: 12px;">
-                            建立者：${escapeHtml(term.author || '匿名用戶')} | ${term.createdAt}
-                        </div>
+        html += `<h4 style="color: #667eea; margin: 30px 0 15px 0;">專有名詞</h4>`;
+        glossaryTerms.forEach(term => {
+            html += `
+                <div class="question-item">
+                    <div style="font-weight: bold; color: #667eea;">${escapeHtml(term.term)}</div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                        <strong>定義：</strong>${escapeHtml(term.definition)}
                     </div>
-                `;
-            });
+                </div>
+            `;
         });
     }
     
     container.innerHTML = html;
 }
 
-// 更新所有視圖
 function updateAllViews() {
     updateManageView();
     updateAnswerView();
@@ -601,224 +517,113 @@ function updateAllViews() {
     updateExportView();
 }
 
-// 輸出PDF
+// PDF 輸出
 function exportToPDF() {
     if (questions.length === 0 && glossaryTerms.length === 0) {
         alert('沒有內容可以輸出！');
         return;
     }
 
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const pdfBtn = document.getElementById('pdfBtn');
+    if (pdfBtn) {
+        pdfBtn.disabled = true;
+        pdfBtn.textContent = '生成中...';
+    }
+
+    const tempContainer = document.createElement('div');
+    tempContainer.style.cssText = 'position:absolute;top:-9999px;width:210mm;background:#fff;padding:30px;font-family:Microsoft YaHei,Arial;line-height:1.6;color:#333';
     
-    doc.setFont("helvetica", "normal");
-    
-    let yPosition = 20;
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    const margin = 20;
+    tempContainer.innerHTML = generatePDFContent();
+    document.body.appendChild(tempContainer);
 
-    // 標題
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text('Knowledge Base Collection', margin, yPosition);
-    yPosition += 15;
-
-    // 如果有問題，先輸出問題
-    if (questions.length > 0) {
-        yPosition += 10;
-        doc.setFontSize(14);
-        doc.text('Questions & Answers', margin, yPosition);
-        yPosition += 15;
-
-        const sortedQuestions = [...questions].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        
-        doc.setFontSize(12);
-        doc.setFont("helvetica", "normal");
-
-        sortedQuestions.forEach((q, index) => {
-            if (yPosition > pageHeight - 60) {
-                doc.addPage();
-                yPosition = 20;
-            }
-
-            // 問題編號和內容
-            doc.setFont("helvetica", "bold");
-            const questionText = `Q${index + 1}: ${q.question}`;
-            const questionLines = doc.splitTextToSize(questionText, pageWidth - margin * 2);
-            
-            questionLines.forEach(line => {
-                if (yPosition > pageHeight - 20) {
-                    doc.addPage();
-                    yPosition = 20;
-                }
-                doc.text(line, margin, yPosition);
-                yPosition += 7;
-            });
-
-            // 答案
-            yPosition += 5;
-            doc.setFont("helvetica", "normal");
-            const answerText = `A: ${q.answer}`;
-            const answerLines = doc.splitTextToSize(answerText, pageWidth - margin * 2);
-            
-            answerLines.forEach(line => {
-                if (yPosition > pageHeight - 20) {
-                    doc.addPage();
-                    yPosition = 20;
-                }
-                doc.text(line, margin, yPosition);
-                yPosition += 7;
-            });
-
-            // 作者和時間
-            yPosition += 3;
-            doc.setFont("helvetica", "italic");
-            doc.setFontSize(10);
-            const metaText = `Author: ${q.author || 'Anonymous'} | ${q.createdAt}`;
-            doc.text(metaText, margin, yPosition);
-            yPosition += 15;
-            doc.setFontSize(12);
-        });
-    }
-
-    // 如果有專有名詞，輸出專有名詞
-    if (glossaryTerms.length > 0) {
-        if (questions.length > 0) {
-            yPosition += 20;
-        }
-        
-        if (yPosition > pageHeight - 100) {
-            doc.addPage();
-            yPosition = 20;
-        }
-
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text('Glossary', margin, yPosition);
-        yPosition += 15;
-
-        const sortedTerms = [...glossaryTerms].sort((a, b) => 
-            a.term.localeCompare(b.term, 'zh-TW', { numeric: true })
-        );
-        
-        // 按分類分組
-        const groupedTerms = {};
-        sortedTerms.forEach(term => {
-            const category = term.category || 'General';
-            if (!groupedTerms[category]) {
-                groupedTerms[category] = [];
-            }
-            groupedTerms[category].push(term);
-        });
-
-        doc.setFontSize(12);
-        
-        Object.keys(groupedTerms).sort().forEach(category => {
-            if (yPosition > pageHeight - 40) {
-                doc.addPage();
-                yPosition = 20;
-            }
-
-            // 分類標題
-            doc.setFont("helvetica", "bold");
-            doc.text(category, margin, yPosition);
-            yPosition += 12;
-
-            groupedTerms[category].forEach(term => {
-                if (yPosition > pageHeight - 40) {
-                    doc.addPage();
-                    yPosition = 20;
-                }
-
-                // 名詞
-                doc.setFont("helvetica", "bold");
-                const termLines = doc.splitTextToSize(term.term, pageWidth - margin * 2);
-                termLines.forEach(line => {
-                    if (yPosition > pageHeight - 20) {
-                        doc.addPage();
-                        yPosition = 20;
-                    }
-                    doc.text(line, margin, yPosition);
-                    yPosition += 7;
-                });
-
-                // 定義
-                yPosition += 3;
-                doc.setFont("helvetica", "normal");
-                const definitionLines = doc.splitTextToSize(term.definition, pageWidth - margin * 2);
-                definitionLines.forEach(line => {
-                    if (yPosition > pageHeight - 20) {
-                        doc.addPage();
-                        yPosition = 20;
-                    }
-                    doc.text(line, margin, yPosition);
-                    yPosition += 7;
-                });
-
-                // 作者
-                yPosition += 2;
-                doc.setFont("helvetica", "italic");
-                doc.setFontSize(10);
-                const metaText = `Added by: ${term.author || 'Anonymous'}`;
-                doc.text(metaText, margin, yPosition);
-                yPosition += 12;
-                doc.setFontSize(12);
-            });
-
-            yPosition += 10;
-        });
-    }
-
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    doc.save(`knowledge-base-${timestamp}.pdf`);
-}
-
-// 測試 Firebase 連線
-function testFirebaseConnection() {
-    if (!firebaseEnabled) {
-        alert('Firebase 尚未初始化，請檢查設定');
-        return;
-    }
-
-    // 嘗試寫入測試資料
-    const testData = {
-        id: Date.now(),
-        question: '🧪 測試問題 - 如果您看到這個問題表示連線成功！',
-        answer: '這是一個測試答案，用來確認 Firebase 連線正常運作。',
-        author: '系統測試',
-        createdAt: new Date().toLocaleString(),
-        timestamp: Date.now(),
-        isTest: true
+    const opt = {
+        margin: [15, 15, 15, 15],
+        filename: `knowledge-base-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    window.firebasePush(questionsRef, testData).then(() => {
-        alert('✅ Firebase 連線測試成功！\n測試問題已新增，您可以稍後刪除它。');
-        updateConnectionStatus('Firebase 連線測試成功！', true);
-    }).catch((error) => {
-        console.error('Firebase 測試失敗:', error);
-        alert('❌ Firebase 連線測試失敗：\n' + error.message + '\n\n請檢查：\n1. 資料庫規則是否允許讀寫\n2. 網路連線是否正常\n3. Firebase 設定是否正確');
+    html2pdf().set(opt).from(tempContainer).save().then(() => {
+        document.body.removeChild(tempContainer);
+        if (pdfBtn) {
+            pdfBtn.disabled = false;
+            pdfBtn.textContent = '下載 PDF';
+        }
+    }).catch(() => {
+        if (tempContainer.parentNode) document.body.removeChild(tempContainer);
+        if (pdfBtn) {
+            pdfBtn.disabled = false;
+            pdfBtn.textContent = '下載 PDF';
+        }
     });
 }
 
-// HTML 跳脫函數，防止 XSS 攻擊
+function generatePDFContent() {
+    let html = `
+        <h1 style="text-align:center;color:#667eea;margin-bottom:30px">問題與專有名詞知識庫</h1>
+        <div style="text-align:center;margin-bottom:30px;color:#6c757d;font-size:12px">生成時間：${new Date().toLocaleString()}</div>
+    `;
+
+    if (questions.length > 0) {
+        html += `<h2 style="color:#495057;margin:30px 0 20px 0">問題與答案 (${questions.length} 項)</h2>`;
+        questions.forEach((q, i) => {
+            html += `
+                <div style="margin-bottom:25px;padding:20px;border-left:4px solid #667eea;background:#f8f9fa">
+                    <div style="font-weight:bold;margin-bottom:12px;color:#495057">問題 ${i + 1}：${escapeHtml(q.question)}</div>
+                    <div style="margin:12px 0;padding-left:20px;background:white;padding:15px;border-radius:5px">
+                        <strong style="color:#667eea">答案：</strong><br>${escapeHtml(q.answer)}
+                    </div>
+                    <div style="font-size:12px;color:#6c757d;margin-top:10px">發布者：${escapeHtml(q.author || '匿名用戶')} | ${q.createdAt}</div>
+                </div>
+            `;
+        });
+    }
+
+    if (glossaryTerms.length > 0) {
+        html += `<h2 style="color:#495057;margin:40px 0 20px 0">專有名詞解釋 (${glossaryTerms.length} 項)</h2>`;
+        const groupedTerms = {};
+        glossaryTerms.forEach(term => {
+            const cat = term.category || '一般';
+            if (!groupedTerms[cat]) groupedTerms[cat] = [];
+            groupedTerms[cat].push(term);
+        });
+
+        Object.keys(groupedTerms).sort().forEach(category => {
+            html += `<h3 style="color:#667eea;margin:25px 0 15px 0">${escapeHtml(category)}</h3>`;
+            groupedTerms[category].forEach(term => {
+                html += `
+                    <div style="margin-bottom:20px;padding:15px 0;border-bottom:1px solid #e9ecef">
+                        <div style="font-weight:bold;color:#667eea;font-size:16px;margin-bottom:8px">${escapeHtml(term.term)}</div>
+                        <div style="margin:8px 0;padding-left:15px">${escapeHtml(term.definition)}</div>
+                        <div style="font-size:11px;color:#6c757d;padding-left:15px">建立者：${escapeHtml(term.author || '匿名用戶')} | ${term.createdAt}</div>
+                    </div>
+                `;
+            });
+        });
+    }
+
+    return html;
+}
+
+// 工具函數
+function updateConnectionStatus(message, isOnline) {
+    const statusEl = document.getElementById('connectionStatus');
+    if (statusEl) {
+        statusEl.textContent = message;
+        statusEl.className = isOnline ? 'connection-status' : 'connection-status offline';
+    }
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// 如果 Firebase 模組載入失敗，回退到本地模式
-window.addEventListener('error', function(e) {
-    if (e.message && e.message.includes('firebase')) {
-        console.warn('Firebase 載入失敗，使用本地模式');
-        fallbackToLocalStorage();
-    }
-});
-
-// 初始載入（如果 Firebase 沒有觸發）
+// 初始化
 setTimeout(() => {
-    if (typeof window.initializeApp === 'function' && questions.length === 0 && !firebaseEnabled) {
+    if (questions.length === 0 && !firebaseEnabled) {
         fallbackToLocalStorage();
         setupNavigation();
         updateAllViews();

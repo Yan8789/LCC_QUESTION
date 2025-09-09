@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>問題管理系統 - 雲端共享版</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <title>不要被問倒</title>
+    <!-- 使用支援中文的 PDF 庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
@@ -241,6 +242,19 @@
             color: #343a40;
             flex-grow: 1;
             margin-right: 15px;
+            cursor: pointer;
+            transition: color 0.3s ease;
+        }
+
+        .question-text:hover {
+            color: #667eea;
+        }
+
+        .question-text.editing {
+            color: #667eea;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 6px;
         }
 
         .answer-text {
@@ -341,7 +355,7 @@
     <div class="container">
         <div class="header">
             <h1>不要被問倒</h1>
-            <p>不會的問題趕快看，也可以自己新增問題</p>
+            <p>🌐 不會的問題趕快看，也可以自己新增問題</p>
         </div>
 
         <div id="connectionStatus" class="connection-status">
@@ -378,6 +392,25 @@
                     <button class="btn" onclick="cancelAdd()" style="margin-left: 10px; background: #6c757d;">取消</button>
                 </div>
 
+                <!-- 編輯問題表單 -->
+                <div id="editQuestionForm" class="add-question-form" style="display: none;">
+                    <h3 style="margin-bottom: 20px; color: #343a40;">編輯問題</h3>
+                    <div class="form-group">
+                        <label for="editQuestionInput">問題：</label>
+                        <textarea id="editQuestionInput" placeholder="請輸入您的問題..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAnswerInput">答案：</label>
+                        <textarea id="editAnswerInput" placeholder="請輸入答案..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="editAuthorInput">您的名稱 (可選)：</label>
+                        <input type="text" id="editAuthorInput" placeholder="匿名用戶" />
+                    </div>
+                    <button class="btn" onclick="saveQuestionEdit()" id="saveEditBtn">儲存</button>
+                    <button class="btn" onclick="cancelEdit()" style="margin-left: 10px; background: #6c757d;">取消</button>
+                </div>
+
                 <div id="questionsList">
                     <!-- 問題列表將在這裡顯示 -->
                 </div>
@@ -407,7 +440,7 @@
                     </div>
                     <div class="form-group">
                         <label for="categoryInput">分類 (可選)：</label>
-                        <input type="text" id="categoryInput" placeholder="例如：技術、協議等" />
+                        <input type="text" id="categoryInput" placeholder="例如：技術、協議等(沒填就是一般)" />
                     </div>
                     <div class="form-group">
                         <label for="glossaryAuthorInput">您的名稱 (可選)：</label>
@@ -415,6 +448,29 @@
                     </div>
                     <button class="btn" onclick="addGlossaryTerm()" id="addGlossaryBtn">新增</button>
                     <button class="btn" onclick="cancelGlossaryAdd()" style="margin-left: 10px; background: #6c757d;">取消</button>
+                </div>
+
+                <!-- 編輯專有名詞表單 -->
+                <div id="editGlossaryForm" class="add-question-form" style="display: none;">
+                    <h3 style="margin-bottom: 20px; color: #343a40;">編輯專有名詞</h3>
+                    <div class="form-group">
+                        <label for="editTermInput">名詞：</label>
+                        <input type="text" id="editTermInput" placeholder="請輸入專有名詞...">
+                    </div>
+                    <div class="form-group">
+                        <label for="editDefinitionInput">解釋：</label>
+                        <textarea id="editDefinitionInput" placeholder="請輸入名詞解釋..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="editCategoryInput">分類 (可選)：</label>
+                        <input type="text" id="editCategoryInput" placeholder="例如：技術、醫學、法律等" />
+                    </div>
+                    <div class="form-group">
+                        <label for="editGlossaryAuthorInput">您的名稱 (可選)：</label>
+                        <input type="text" id="editGlossaryAuthorInput" placeholder="匿名用戶" />
+                    </div>
+                    <button class="btn" onclick="saveGlossaryEdit()" id="saveGlossaryEditBtn">儲存</button>
+                    <button class="btn" onclick="cancelGlossaryEdit()" style="margin-left: 10px; background: #6c757d;">取消</button>
                 </div>
 
                 <div id="searchGlossary" style="margin-bottom: 20px;">
@@ -432,14 +488,29 @@
             <div id="export" class="section">
                 <div class="pdf-options">
                     <h3>輸出 PDF</h3>
-                    <p style="margin-bottom: 20px; color: #6c757d;">將所有問題和答案輸出為 PDF 文件</p>
-                    <button class="btn" onclick="exportToPDF()">下載 PDF</button>
+                    <p style="margin-bottom: 20px; color: #6c757d;">將所有問題和答案輸出為 PDF 文件，完美支援中文顯示</p>
+                    
+                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                        <button class="btn" onclick="exportToPDF()" id="pdfBtn">下載 PDF</button>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 8px; font-size: 14px; color: #495057;">
+                        <strong>✅ 中文輸出</strong><br>
+                        • 使用 html2pdf 庫確保中文字完美顯示<br>
+                        • 自動分頁和格式化<br>
+                        • 包含所有問題和專有名詞
+                    </div>
                 </div>
                 <div id="pdfPreview">
                     <!-- PDF 預覽內容 -->
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 隱藏的 PDF 內容 -->
+    <div id="pdfContent" class="pdf-content">
+        <!-- PDF 內容將在這裡生成 -->
     </div>
 
     <!-- 引入分離的 JavaScript 檔案 -->
