@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>問題管理系統 - 雲端共享版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+        import { getDatabase, ref, onValue, push, remove, set } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+
+        // 您的 Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyAPIusiy-KC3f-PbPDkR0tMjTtRaSPXgbQ",
+            authDomain: "lccquestion-3f283.firebaseapp.com",
+            databaseURL: "https://lccquestion-3f283-default-rtdb.firebaseio.com",
+            projectId: "lccquestion-3f283",
+            storageBucket: "lccquestion-3f283.firebasestorage.app",
+            messagingSenderId: "553774790625",
+            appId: "1:553774790625:web:19bf57af6a0b83b8ca84a0",
+            measurementId: "G-Q34WSXC2B3"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // 將 Firebase 函數暴露給全域範圍
+        window.firebaseDb = database;
+        window.firebaseRef = ref;
+        window.firebaseOnValue = onValue;
+        window.firebasePush = push;
+        window.firebaseRemove = remove;
+        window.firebaseSet = set;
+        
+        // Firebase 初始化完成後載入資料
+        window.initializeApp();
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .connection-status {
+            background: #28a745;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .connection-status.offline {
+            background: #dc3545;
+        }
+
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .nav-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        .nav-btn.active {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+
+        .content {
+            padding: 30px;
+            min-height: 400px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .add-question-form {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            border: 2px solid #e9ecef;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            height: 100px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+        }
+
+        .question-item {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .question-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+        }
+
+        .question-item.new {
+            border-color: #28a745;
+            box-shadow: 0 4px 20px rgba(40, 167, 69, 0.2);
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .question-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #343a40;
+            flex-grow: 1;
+            margin-right: 15px;
+        }
+
+        .answer-text {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .answer-text.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; height: 0; }
+            to { opacity: 1; height: auto; }
+        }
+
+        .show-answer-btn {
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .show-answer-btn:hover {
+            opacity: 0.9;
+        }
+
+        .add-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 18px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .add-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #6c757d;
+            font-size: 18px;
+            padding: 50px 20px;
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .pdf-options {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .pdf-options h3 {
+            margin-bottom: 20px;
+            color: #343a40;
+        }
+
+        @media (max-width: 768px) {
+            .nav-buttons {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .question-header {
+                flex-direction: column;
+            }
+
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>不要被問倒</h1>
+            <p>不會的問題趕快看，也可以自己新增問題</p>
+        </div>
+
+        <div id="connectionStatus" class="connection-status">
+            正在連接雲端資料庫...
+        </div>
+
+        <div class="content">
+            <div class="nav-buttons">
+                <button class="nav-btn active" data-section="manage">管理問題</button>
+                <button class="nav-btn" data-section="answer">回答問題</button>
+                <button class="nav-btn" data-section="glossary">專有名詞</button>
+                <button class="nav-btn" data-section="export">輸出成 PDF</button>
+            </div>
+
+            <!-- 管理問題區塊 -->
+            <div id="manage" class="section active">
+                <button class="add-btn" onclick="toggleAddForm()">+ 新增問題</button>
+                
+                <div id="addQuestionForm" class="add-question-form" style="display: none;">
+                    <h3 style="margin-bottom: 20px; color: #343a40;">新增問題</h3>
+                    <div class="form-group">
+                        <label for="questionInput">問題：</label>
+                        <textarea id="questionInput" placeholder="請輸入您的問題..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="answerInput">答案：</label>
+                        <textarea id="answerInput" placeholder="請輸入答案..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="authorInput">您的名稱 (可選)：</label>
+                        <input type="text" id="authorInput" placeholder="匿名用戶" />
+                    </div>
+                    <button class="btn" onclick="addQuestion()" id="addBtn">新增</button>
+                    <button class="btn" onclick="cancelAdd()" style="margin-left: 10px; background: #6c757d;">取消</button>
+                </div>
+
+                <div id="questionsList">
+                    <!-- 問題列表將在這裡顯示 -->
+                </div>
+            </div>
+
+            <!-- 回答問題區塊 -->
+            <div id="answer" class="section">
+                <h2 style="margin-bottom: 30px; color: #343a40;">回答問題</h2>
+                <div id="answerQuestionsList">
+                    <!-- 問題列表將在這裡顯示 -->
+                </div>
+            </div>
+
+            <!-- 專有名詞區塊 -->
+            <div id="glossary" class="section">
+                <button class="add-btn" onclick="toggleGlossaryForm()">+ 新增名詞</button>
+                
+                <div id="addGlossaryForm" class="add-question-form" style="display: none;">
+                    <h3 style="margin-bottom: 20px; color: #343a40;">新增專有名詞</h3>
+                    <div class="form-group">
+                        <label for="termInput">名詞：</label>
+                        <input type="text" id="termInput" placeholder="請輸入專有名詞...">
+                    </div>
+                    <div class="form-group">
+                        <label for="definitionInput">解釋：</label>
+                        <textarea id="definitionInput" placeholder="請輸入名詞解釋..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="categoryInput">分類 (可選)：</label>
+                        <input type="text" id="categoryInput" placeholder="例如：技術、協議等" />
+                    </div>
+                    <div class="form-group">
+                        <label for="glossaryAuthorInput">您的名稱 (可選)：</label>
+                        <input type="text" id="glossaryAuthorInput" placeholder="匿名用戶" />
+                    </div>
+                    <button class="btn" onclick="addGlossaryTerm()" id="addGlossaryBtn">新增</button>
+                    <button class="btn" onclick="cancelGlossaryAdd()" style="margin-left: 10px; background: #6c757d;">取消</button>
+                </div>
+
+                <div id="searchGlossary" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <input type="text" id="glossarySearch" placeholder="搜尋專有名詞..." onkeyup="filterGlossary()" style="max-width: 400px;">
+                    </div>
+                </div>
+
+                <div id="glossaryList">
+                    <!-- 專有名詞列表將在這裡顯示 -->
+                </div>
+            </div>
+
+            <!-- 輸出PDF區塊 -->
+            <div id="export" class="section">
+                <div class="pdf-options">
+                    <h3>輸出 PDF</h3>
+                    <p style="margin-bottom: 20px; color: #6c757d;">將所有問題和答案輸出為 PDF 文件</p>
+                    <button class="btn" onclick="exportToPDF()">下載 PDF</button>
+                </div>
+                <div id="pdfPreview">
+                    <!-- PDF 預覽內容 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入分離的 JavaScript 檔案 -->
+    <script src="app.js"></script>
+</body>
+</html>

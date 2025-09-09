@@ -1,0 +1,13 @@
+# 阻止所有搜尋引擎收錄此網站
+User-agent: *
+Disallow: /
+
+# 阻止特定的搜尋引擎
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Slurp
+Disallow: /
