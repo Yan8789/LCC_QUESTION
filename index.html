@@ -364,14 +364,14 @@
 
         <div class="content">
             <div class="nav-buttons">
-                <button class="nav-btn active" data-section="manage">管理問題</button>
                 <button class="nav-btn" data-section="answer">自行測驗</button>
+                <button class="nav-btn active" data-section="manage">管理問題</button>
                 <button class="nav-btn" data-section="glossary">專有名詞</button>
                 <button class="nav-btn" data-section="export">輸出成 PDF</button>
             </div>
 
             <!-- 管理問題區塊 -->
-            <div id="manage" class="section active">
+            <div id="manage" class="section">
                 <button class="add-btn" onclick="toggleAddForm()">+ 新增問題</button>
                 
                 <div id="addQuestionForm" class="add-question-form" style="display: none;">
@@ -417,8 +417,8 @@
             </div>
 
             <!-- 回答問題區塊 -->
-            <div id="answer" class="section">
-                <h2 style="margin-bottom: 30px; color: #343a40;">回答問題</h2>
+            <div id="answer" class="section active">
+                <h2 style="margin-bottom: 30px; color: #343a40;">自行測驗</h2>
                 <div id="answerQuestionsList">
                     <!-- 問題列表將在這裡顯示 -->
                 </div>
